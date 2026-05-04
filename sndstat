@@ -1,0 +1,48 @@
+#!/bin/sh
+
+MODULE="snd_mcp49x1_gpio"
+PARAM_DIR="/sys/module/$MODULE/parameters"
+PARAMS="gpio_cs gpio_sck gpio_sdi dac_bits gain_percent limiter_enable highpass_enable highpass_q15 fade_ms psycho_bass_enable psycho_bass_level psycho_bass_shift mmio_gpio1_base"
+
+read_param() {
+    p="$1"
+    f="$PARAM_DIR/$p"
+    if [ -r "$f" ]; then
+        tr -d '\n' < "$f"
+    else
+        printf '%s' '-'
+    fi
+}
+
+format_value() {
+    p="$1"
+    v="$2"
+
+    case "$p" in
+        mmio_gpio1_base)
+            case "$v" in
+                -|'') printf '%s' "$v" ;;
+                0x*|0X*) printf '%s' "$v" ;;
+                *) printf '0x%08x' "$v" 2>/dev/null || printf '%s' "$v" ;;
+            esac
+            ;;
+        *)
+            printf '%s' "$v"
+            ;;
+    esac
+}
+
+if [ ! -d "$PARAM_DIR" ]; then
+    echo "$MODULE is not loaded"
+    exit 1
+fi
+
+clear
+printf '\033[7mMCP49x1 ALSA driver parameters\033[0m\n\n'
+printf '┌────────────────────────────────────┐\n'
+for p in $PARAMS; do
+    raw="$(read_param "$p")"
+    val="$(format_value "$p" "$raw")"
+    printf '│ %-18s : %-13s │\n' "$p" "$val"
+done
+printf '└────────────────────────────────────┘\n'
