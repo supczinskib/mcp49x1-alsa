@@ -2,7 +2,7 @@
 
 MODULE="snd_mcp49x1_gpio"
 PARAM_DIR="/sys/module/$MODULE/parameters"
-PARAMS="gpio_cs gpio_sck gpio_sdi dac_bits gain_percent limiter_enable highpass_enable highpass_q15 fade_ms psycho_bass_enable psycho_bass_level psycho_bass_shift mmio_gpio1_base"
+PARAMS="gpio_cs gpio_sck gpio_sdi dac_bits dither gain_percent limiter_enable highpass_enable highpass_q15 fade_ms psycho_bass_enable psycho_bass_level psycho_bass_shift mmio_gpio1_base"
 
 read_param() {
     p="$1"

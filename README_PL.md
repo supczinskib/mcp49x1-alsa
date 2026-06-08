@@ -215,6 +215,24 @@ Układu nie da się wiarygodnie rozpoznać automatycznie, ponieważ to połącze
 - MCP4911 używa górnych 10 bitów pola danych.
 - MCP4921 używa wszystkich 12 bitów pola danych.
 
+
+### `dither`
+
+Opcjonalny TPDF dither przed końcową konwersją do 8-bitowego kodu DAC-a.
+
+Działa tylko dla `dac_bits=8` / MCP4901. Dla `dac_bits=10` i `dac_bits=12` jest ignorowany.
+
+Parametr:
+- `dither=0` - wyłączony, domyślnie; dotychczasowe zachowanie
+- `dither=1..4` - włączony, coraz mocniejszy poziom ditheringu
+
+Przykład:
+
+```sh
+insmod snd_mcp49x1_gpio.ko dac_bits=8 dither=1
+```
+
+
 ### `gain_percent`
 
 Wewnętrzne wzmocnienie przed końcową konwersją do wybranej rozdzielczości DAC-a.
@@ -394,6 +412,7 @@ MCP49x1 ALSA driver parameters
 │ gpio_sck           : 42            │
 │ gpio_sdi           : 43            │
 │ dac_bits           : 8             │
+│ dither             : 0             │
 │ gain_percent       : 150           │
 │ limiter_enable     : 1             │
 │ highpass_enable    : 1             │
@@ -512,4 +531,5 @@ psycho_bass_level=60
 psycho_bass_shift=5
 mmio_gpio1_base=0xff530000
 dac_bits=8
+dither=0
 ```

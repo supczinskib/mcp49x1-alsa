@@ -27,6 +27,7 @@
 #include <linux/vmalloc.h>
 #include <linux/platform_device.h>
 #include <linux/io.h>
+#include <linux/bitops.h>
 
 #include <sound/core.h>
 #include <sound/pcm.h>
@@ -100,6 +101,8 @@ static int dac_bits = 8;
 module_param(dac_bits, int, 0444);
 MODULE_PARM_DESC(dac_bits, "DAC resolution: 8 for MCP4901, 10 for MCP4911, 12 for MCP4921; default 8");
 
+static int dither = 0;
+
 /* Stable rates for this GPIO/DAC path. Higher rates were intentionally removed. */
 static const unsigned int mcp4901_supported_rates[] = {
 	8000, 11025, 16000, 22050,
@@ -153,6 +156,9 @@ struct mcp4901_chip {
 	unsigned int dac_convert_shift_cached;
 	u16 dac_center_cached;
 	u16 dac_max_cached;
+	bool dither_enabled_cached;
+	int dither_level_cached;
+	u32 dither_state;
 	unsigned int master_volume;
 
 
@@ -173,6 +179,52 @@ struct mcp4901_chip {
 };
 
 static struct platform_device *mcp4901_pdev;
+static struct mcp4901_chip *mcp4901_active_chip;
+
+static int mcp4901_clamp_dither(int value)
+{
+	if (value < 0)
+		return 0;
+	if (value > 4)
+		return 4;
+	return value;
+}
+
+static void mcp4901_apply_dither_param_to_chip(struct mcp4901_chip *chip, int value)
+{
+	unsigned long flags;
+
+	if (!chip)
+		return;
+
+	spin_lock_irqsave(&chip->lock, flags);
+	chip->dither_level_cached = value;
+	chip->dither_enabled_cached = value > 0 && chip->dac_bits_cached == 8;
+	spin_unlock_irqrestore(&chip->lock, flags);
+}
+
+static int param_set_dither_0_4(const char *val, const struct kernel_param *kp)
+{
+	int ret;
+	int value;
+
+	ret = kstrtoint(val, 0, &value);
+	if (ret)
+		return ret;
+
+	value = mcp4901_clamp_dither(value);
+	*((int *)kp->arg) = value;
+	mcp4901_apply_dither_param_to_chip(mcp4901_active_chip, value);
+	return 0;
+}
+
+static const struct kernel_param_ops param_ops_dither_0_4 = {
+	.set = param_set_dither_0_4,
+	.get = param_get_int,
+};
+
+module_param_cb(dither, &param_ops_dither_0_4, &dither, 0644);
+MODULE_PARM_DESC(dither, "8-bit DAC TPDF dither level: 0=off, 1..4=increasing level; affects only dac_bits=8; default 0");
 
 /* Rockchip GPIO v2 registers used by the MMIO playback backend. */
 #define RK_GPIO_V2_DR_L      0x0000
@@ -539,6 +591,38 @@ static inline s32 psycho_bass_process_always(struct mcp4901_chip *chip, s32 x)
 	return x;
 }
 
+
+static inline u32 mcp4901_dither_rand(struct mcp4901_chip *chip)
+{
+	u32 x = chip->dither_state;
+
+	/* Small deterministic xorshift PRNG for the hrtimer playback path. */
+	if (unlikely(!x))
+		x = 0x6d2b79f5u;
+	x ^= x << 13;
+	x ^= x >> 17;
+	x ^= x << 5;
+	chip->dither_state = x;
+	return x;
+}
+
+static inline s32 mcp4901_apply_8bit_dither(struct mcp4901_chip *chip, s32 x)
+{
+	s32 a, b;
+
+	if (likely(!chip->dither_enabled_cached))
+		return x;
+
+	/*
+	 * TPDF dither: subtract two independent 8-bit random values.
+	 * For dac_bits=8, one output LSB is 256 units in the signed
+	 * 16-bit domain, so level=1 gives roughly +/-1 LSB of noise.
+	 */
+	a = mcp4901_dither_rand(chip) & 0xff;
+	b = mcp4901_dither_rand(chip) & 0xff;
+	return x + ((a - b) * chip->dither_level_cached);
+}
+
 static inline u16 process_to_dac_full(struct mcp4901_chip *chip, s32 x)
 {
 	s32 y;
@@ -551,6 +635,7 @@ static inline u16 process_to_dac_full(struct mcp4901_chip *chip, s32 x)
 		x = div_s64((s64)x * chip->played_frames, chip->fade_frames);
 
 	x = soft_limit_s16(x);
+	x = mcp4901_apply_8bit_dither(chip, x);
 
 	y = (x + 32768) >> chip->dac_convert_shift_cached;
 	if (y < 0)
@@ -583,6 +668,7 @@ static inline u16 process_to_dac(struct mcp4901_chip *chip, s32 x)
 	else if (x < -32768)
 		x = -32768;
 
+	x = mcp4901_apply_8bit_dither(chip, x);
 	y = (x + 32768) >> chip->dac_convert_shift_cached;
 	if (y < 0)
 		y = 0;
@@ -747,6 +833,7 @@ static void mcp4901_update_cached_params(struct mcp4901_chip *chip,
 	s32 hp = highpass_q15;
 	s32 psycho_level = psycho_bass_level;
 	s32 psycho_shift = psycho_bass_shift;
+	s32 dith = mcp4901_clamp_dither(dither);
 
 	if (gain < 0)
 		gain = 0;
@@ -788,6 +875,8 @@ static void mcp4901_update_cached_params(struct mcp4901_chip *chip,
 	chip->dac_convert_shift_cached = 16 - dac_bits;
 	chip->dac_max_cached = (1u << dac_bits) - 1;
 	chip->dac_center_cached = 1u << (dac_bits - 1);
+	chip->dither_level_cached = dith;
+	chip->dither_enabled_cached = dith > 0 && chip->dac_bits_cached == 8;
 
 	if (runtime->format == SNDRV_PCM_FORMAT_U8 && runtime->channels == 1)
 		chip->read_sample_cached = read_sample_u8_mono;
@@ -1083,9 +1172,12 @@ static int mcp4901_probe(struct platform_device *pdev)
 {
 	struct mcp4901_chip *chip;
 	int ret;
+	int dith;
 
 	if (!enable)
 		return -ENODEV;
+
+	dith = mcp4901_clamp_dither(dither);
 
 	chip = kzalloc(sizeof(*chip), GFP_KERNEL);
 	if (!chip)
@@ -1099,9 +1191,13 @@ static int mcp4901_probe(struct platform_device *pdev)
 	chip->dac_convert_shift_cached = 16 - dac_bits;
 	chip->dac_max_cached = (1u << dac_bits) - 1;
 	chip->dac_center_cached = 1u << (dac_bits - 1);
+	chip->dither_level_cached = dith;
+	chip->dither_enabled_cached = dith > 0 && chip->dac_bits_cached == 8;
+	chip->dither_state = 0x6d2b79f5u;
 	chip->last_code = chip->dac_center_cached;
 	chip->dac_active = false;
 	spin_lock_init(&chip->lock);
+	mcp4901_active_chip = chip;
 	hrtimer_init(&chip->timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	chip->timer.function = mcp4901_timer_fn;
 
@@ -1121,10 +1217,11 @@ static int mcp4901_probe(struct platform_device *pdev)
 	if (ret)
 		goto err_mmio;
 
-	pr_info(DRV_NAME ": registered ALSA PCM, backend=mmio-only, GPIO CS=%d SCK=%d SDI=%d, rates=8000/11025/16000/22050, gain=%d%% limiter=%d highpass=%d q15=%d psycho_bass=%d level=%d shift=%d master_volume=%u%% dac_bits=%d\n",
+	pr_info(DRV_NAME ": registered ALSA PCM, backend=mmio-only, GPIO CS=%d SCK=%d SDI=%d, rates=8000/11025/16000/22050, gain=%d%% limiter=%d highpass=%d q15=%d psycho_bass=%d level=%d shift=%d master_volume=%u%% dac_bits=%d dither=%d active=%d\n",
 		gpio_cs, gpio_sck, gpio_sdi, gain_percent, limiter_enable,
 		highpass_enable, highpass_q15, psycho_bass_enable, psycho_bass_level,
-		psycho_bass_shift, chip->master_volume, dac_bits);
+		psycho_bass_shift, chip->master_volume, dac_bits,
+		dith, dac_bits == 8 && dith > 0);
 	return 0;
 
 err_mmio:
@@ -1132,6 +1229,7 @@ err_mmio:
 err_gpio:
 	free_gpios();
 err_free:
+	mcp4901_active_chip = NULL;
 	platform_set_drvdata(pdev, NULL);
 	kfree(chip);
 	return ret;
@@ -1151,6 +1249,7 @@ static int mcp4901_remove(struct platform_device *pdev)
 
 	free_gpios();
 	release_mmio_backend();
+	mcp4901_active_chip = NULL;
 	platform_set_drvdata(pdev, NULL);
 	kfree(chip);
 

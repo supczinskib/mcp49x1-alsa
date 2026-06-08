@@ -215,6 +215,24 @@ The chip cannot be detected automatically because this connection uses only `CS`
 - MCP4911 uses the upper 10 data bits.
 - MCP4921 uses all 12 data bits.
 
+
+### `dither`
+
+Optional TPDF dither before the final 8-bit DAC conversion.
+
+This affects only `dac_bits=8` / MCP4901. It is ignored for `dac_bits=10` and `dac_bits=12`.
+
+Parameter:
+- `dither=0` - off, default; previous behaviour
+- `dither=1..4` - enabled, increasing amount of dither
+
+Example:
+
+```sh
+insmod snd_mcp49x1_gpio.ko dac_bits=8 dither=1
+```
+
+
 ### `gain_percent`
 
 Internal gain before final conversion to the selected DAC output resolution.
@@ -394,6 +412,7 @@ MCP49x1 ALSA driver parameters
 │ gpio_sck           : 42            │
 │ gpio_sdi           : 43            │
 │ dac_bits           : 8             │
+│ dither             : 0             │
 │ gain_percent       : 150           │
 │ limiter_enable     : 1             │
 │ highpass_enable    : 1             │
@@ -512,4 +531,5 @@ psycho_bass_level=60
 psycho_bass_shift=5
 mmio_gpio1_base=0xff530000
 dac_bits=8
+dither=0
 ```
