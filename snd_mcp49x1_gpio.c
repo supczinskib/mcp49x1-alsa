@@ -65,7 +65,7 @@ MODULE_PARM_DESC(gpio_sck, "GPIO number for MCP49x1 SCK");
 module_param(gpio_sdi, int, 0444);
 MODULE_PARM_DESC(gpio_sdi, "GPIO number for MCP49x1 SDI");
 
-static int gain_percent = 150;
+static int gain_percent = 100;
 module_param(gain_percent, int, 0644);
 MODULE_PARM_DESC(gain_percent, "Software gain before DAC conversion, percent");
 

@@ -238,15 +238,14 @@ insmod snd_mcp49x1_gpio.ko dac_bits=8 dither=1
 Internal gain before final conversion to the selected DAC output resolution.
 
 Default:
-- `gain_percent=150`
+- `gain_percent=100`
 
 Example commands, choose one:
 
 | Setting | Command |
 | --- | --- |
-| Lower gain | `insmod snd_mcp49x1_gpio.ko gain_percent=120` |
-| Default gain | `insmod snd_mcp49x1_gpio.ko gain_percent=150` |
-| Higher gain | `insmod snd_mcp49x1_gpio.ko gain_percent=180` |
+| Default gain | `insmod snd_mcp49x1_gpio.ko gain_percent=100` |
+| Higher gain | `insmod snd_mcp49x1_gpio.ko gain_percent=120` |
 
 Notes:
 - higher values make the output louder
@@ -413,7 +412,7 @@ MCP49x1 ALSA driver parameters
 │ gpio_sdi           : 43            │
 │ dac_bits           : 8             │
 │ dither             : 0             │
-│ gain_percent       : 150           │
+│ gain_percent       : 100           │
 │ limiter_enable     : 1             │
 │ highpass_enable    : 1             │
 │ highpass_q15       : 30000         │
@@ -521,7 +520,7 @@ The driver is loaded as a kernel module.
 Default module parameters:
 
 ```text
-gain_percent=150
+gain_percent=100
 limiter_enable=1
 highpass_enable=1
 highpass_q15=30000

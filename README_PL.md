@@ -238,15 +238,14 @@ insmod snd_mcp49x1_gpio.ko dac_bits=8 dither=1
 Wewnętrzne wzmocnienie przed końcową konwersją do wybranej rozdzielczości DAC-a.
 
 Domyślnie:
-- `gain_percent=150`
+- `gain_percent=100`
 
 Przykładowe komendy, wybierz jedną:
 
 | Ustawienie | Komenda |
 | --- | --- |
-| Mniejsze wzmocnienie | `insmod snd_mcp49x1_gpio.ko gain_percent=120` |
-| Domyślne wzmocnienie | `insmod snd_mcp49x1_gpio.ko gain_percent=150` |
-| Większe wzmocnienie | `insmod snd_mcp49x1_gpio.ko gain_percent=180` |
+| Domyślne wzmocnienie | `insmod snd_mcp49x1_gpio.ko gain_percent=100` |
+| Większe wzmocnienie | `insmod snd_mcp49x1_gpio.ko gain_percent=120` |
 
 Uwagi:
 - większa wartość daje głośniejszy dźwięk
@@ -413,7 +412,7 @@ MCP49x1 ALSA driver parameters
 │ gpio_sdi           : 43            │
 │ dac_bits           : 8             │
 │ dither             : 0             │
-│ gain_percent       : 150           │
+│ gain_percent       : 100           │
 │ limiter_enable     : 1             │
 │ highpass_enable    : 1             │
 │ highpass_q15       : 30000         │
@@ -521,7 +520,7 @@ Sterownik jest ładowany jako moduł kernela.
 Domyślne parametry modułu:
 
 ```text
-gain_percent=150
+gain_percent=100
 limiter_enable=1
 highpass_enable=1
 highpass_q15=30000
